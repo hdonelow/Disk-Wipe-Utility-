@@ -12,7 +12,6 @@ This PowerShell script is designed to securely erase data on a specified disk us
   - [3. Sanitization Process](#3-sanitization-process)
 - [Caution](#caution)
 - [Contributing](#contributing)
-- [License](#license)
 
 ## Features
 
@@ -33,21 +32,24 @@ This PowerShell script is designed to securely erase data on a specified disk us
 - Open a PowerShell session with administrative privileges.
 - Navigate to the directory where the script is located.
 
-```powershell
-cd C:\Path\To\DiskSanitizationUtility
+### 2. User Input
 
-2. User Input
 Run the script by entering the following command:
 powershell
 Copy code
 .\DiskSanitization.ps1
 Follow the on-screen prompts to select the disk for sanitization, set the number of passes, and confirm the process.
-3. Sanitization Process
+
+### 3. Sanitization Process
+
 The script will execute the secure erasure process based on the user's input.
 It will display progress updates during the process.
 Once completed, the script will provide a confirmation message.
-Caution
+
+### Caution
 Data Loss: Running this script will irreversibly erase all data on the specified disk. Ensure you have backed up important data before proceeding.
 Confirmation: Take extra care to confirm your selections, as there is no way to recover data after the process is initiated.
-Contributing
+
+
+### Contributing
 Contributions are welcome! If you have suggestions or improvements, please open an issue or create a pull request.
