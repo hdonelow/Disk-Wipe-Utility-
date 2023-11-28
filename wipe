@@ -1,0 +1,123 @@
+# Initialize global variables
+$global:DISKPART_SCRIPT     = "unattend.txt"
+$global:disk_Id_To_Sanitize = "xxx"
+$global:number_Of_Passes    = 0
+$confirm_To_Sanitize        = ""
+$disk_IDs                   = @()
+$SYSTEM_DRIVE               = $Env:Systemdrive
+
+# Function to display disk information and gather user input
+Function Get-UserDiskSelection {
+    Clear-Host
+    Write-Host "----------------------------------- Disk Information -----------------------------------"
+    Write-Host
+
+    $disks | ForEach-Object {
+        Write-Host "Disk ID:        $($_.Number)" -ForegroundColor Red
+        Write-Host "Disk Name:      $($_.FriendlyName)"
+        Write-Host "Size:           $($_.Size / 1GB) GB"
+        Write-Host "Disk Partition: $($_.PartitionStyle)"
+        Write-Host
+        $disk_IDs.Add($_.Number) | Out-Null
+    }
+
+    Write-Host "----------------------------------------------------------------------------------------"
+
+    if ($disks.Count -lt 2) {
+        Write-Host "This system has less than 2 disks attached. Quitting to avoid wiping the USB drive" -BackgroundColor Black -ForegroundColor Red
+        Exit
+    }
+
+    while ($global:disk_Id_To_Sanitize -notin $disk_IDs) {
+        $global:disk_Id_To_Sanitize = Read-Host "Enter the Disk ID for the disk you want to sanitize"
+        if ($global:disk_Id_To_Sanitize -eq "") { $global:disk_Id_To_Sanitize = "xxx" }
+        if ($global:disk_Id_To_Sanitize -notin $disk_IDs) {
+            Clear-Host
+            Write-Host "Invalid Disk ID entered. See valid Disk IDs below:" -BackgroundColor Black -ForegroundColor DarkYellow
+            Get-UserDiskSelection
+        }
+    }
+
+    Clear-Host
+    while ($global:number_Of_Passes -lt 1 -or $global:number_Of_Passes -gt 99) {
+        $global:number_Of_Passes = Read-Host "Enter the desired number of passes (Recommended: 10)"
+        if (-not ($global:number_Of_Passes -ge 1 -and $global:number_Of_Passes -le 99)) {
+            Clear-Host
+            Write-Host "Invalid number of passes selected. Choose a number between 1-99:" -BackgroundColor Black -ForegroundColor DarkYellow
+        }
+    }
+
+    Clear-Host
+    while ($confirm_To_Sanitize -ne 'confirm') {
+        Write-Host "----------------------------------- Disk Information -----------------------------------"
+        $disks | ForEach-Object {
+            Write-Host "Disk ID:        $($_.Number)"
+            Write-Host "Disk Name:      $($_.FriendlyName)"
+            Write-Host "Size:           $($_.Size / 1GB) GB"
+            Write-Host "Disk Partition: $($_.PartitionStyle)"
+            Write-Host
+        }
+        Write-Host "----------------------------------------------------------------------------------------"
+        Write-Host "`t`t`tDisk to sanitize: $global:disk_Id_To_Sanitize (Disk Number/ID)" -ForegroundColor Cyan
+        Write-Host "`t`t`tNumber of passes: $global:number_Of_Passes" -ForegroundColor Cyan
+        Write-Host
+        Write-Host "Please review your selection above. Type 'confirm' to sanitize." -BackgroundColor Black -ForegroundColor Yellow
+        Write-Host "WARNING. After confirm, all data on the disk will be lost. `nPress Ctrl+C if you wish to abort." -BackgroundColor Black -ForegroundColor Red
+        $confirm_To_Sanitize = Read-Host
+        if ($confirm_To_Sanitize -ne 'confirm') {
+            Clear-Host
+            Write-Host "You must confirm your selection to begin sanitation." -BackgroundColor Black -ForegroundColor DarkYellow
+        }
+    }
+}
+
+# Function to build the diskpart script
+Function Build-Diskpart-Script {
+    Remove-Item -Path "$SYSTEM_DRIVE\$DISKPART_SCRIPT" -Force -ErrorAction SilentlyContinue
+    "sel disk $global:disk_Id_To_Sanitize", "clean all", "create partition primary", "format fs=ntfs quick", "assign letter j", "exit" |
+        Out-File "$SYSTEM_DRIVE\$DISKPART_SCRIPT" -Append -Encoding ascii
+}
+
+# Function to execute the secure erase process with diskpart
+Function Zero-With-Diskpart {
+    Build-Diskpart-Script
+    Write-Host "`nPass $count of $global:number_Of_Passes" -ForegroundColor Cyan
+    Write-Progress "Zeroing disk($global:disk_Id_To_Sanitize). Please wait..."
+    & diskpart.exe /s "$SYSTEM_DRIVE\$DISKPART_SCRIPT" | Out-Null
+}
+
+# Function to perform the final pass of secure erasure
+Function Final-Zero-With-Diskpart {
+    Write-Progress "FINAL: Zeroing disk($global:disk_Id_To_Sanitize). Please wait..."
+    Remove-Item -Path "$SYSTEM_DRIVE\$DISKPART_SCRIPT" -Force -ErrorAction SilentlyContinue
+    "sel disk $global:disk_Id_To_Sanitize", "clean all", "exit" |
+        Out-File "$SYSTEM_DRIVE\$DISKPART_SCRIPT" -Encoding ascii
+    & diskpart.exe /s "$SYSTEM_DRIVE\$DISKPART_SCRIPT" | Out-Null
+}
+
+# Function to perform the drive sanitation
+Function Sanitize-Drive {
+    Clear-Host
+    $count = 1
+    while ($count -le $global:number_Of_Passes) {
+        Zero-With-Diskpart
+        $count++
+        Clear-Host
+    }
+    Write-Host "`nDrive sanitation complete!" -ForegroundColor Green
+}
+
+# Function to copy necessary files to the system drive
+Function Copy-Files-To-System-Drive {
+    $jwipePath = "$SYSTEM_DRIVE\jwipe"
+    if (-not (Test-Path $jwipePath)) {
+        Write-Host "`nCopying necessary files to the system drive..." -ForegroundColor Green
+        Copy-Item -Path .\jwipe.bat, .\jwipe.ps1 -Destination $SYSTEM_DRIVE
+    }
+}
+
+# Main script execution
+Copy-Files-To-System-Drive
+Get-UserDiskSelection
+Sanitize-Drive
+Final-Zero-With-Diskpart
